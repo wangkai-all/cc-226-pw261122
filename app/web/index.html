@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>站内搜索连续改写分析</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <h1>站内搜索 · 连续改写分析</h1>
+    <div class="sub">查询路径 · 零结果改写 · 固定窗口归因（纯本地合成数据）</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn small" id="theme-toggle" type="button">🌙 暗色</button>
+</header>
+
+<nav class="tabs">
+  <button class="active" data-view="overview" type="button">总览指标</button>
+  <button data-view="paths" type="button">查询路径</button>
+  <button data-view="compare" type="button">词类 / 版本对比</button>
+  <button data-view="mapping" type="button">同义词与词类映射</button>
+  <button data-view="quality" type="button">数据质量</button>
+</nav>
+
+<main>
+  <!-- Shared filter row: scopes every view below it -->
+  <section class="filters" id="global-filters">
+    <label>开始日期 <input type="date" id="f-date-from"></label>
+    <label>结束日期 <input type="date" id="f-date-to"></label>
+    <label>实验版本 <select id="f-ab"><option value="">全部</option></select></label>
+    <label>词类 <select id="f-wc"><option value="">全部</option></select></label>
+    <label>映射版本 <select id="f-mv"><option value="">当前激活</option></select></label>
+    <div class="btn-row">
+      <button class="btn primary" id="f-apply" type="button">应用筛选</button>
+      <button class="btn" id="f-reset" type="button">重置</button>
+    </div>
+  </section>
+
+  <!-- ============================================================ OVERVIEW -->
+  <section class="view active" id="view-overview">
+    <div class="kpi-grid" id="kpi-row"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h2>每日搜索量与零结果率</h2>
+        <div class="desc">柱：搜索次数（左轴基准）；线：零结果占比</div>
+        <div id="chart-daily-volume"></div>
+        <div class="legend" id="legend-volume"></div>
+      </div>
+      <div class="card">
+        <h2>零结果改写后的恢复率与转化率</h2>
+        <div class="desc">分母均为完整观察的零结果节点；未完整观察会话单独计数</div>
+        <div id="chart-daily-rates"></div>
+        <div class="legend" id="legend-rates"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>高频零结果查询</h2>
+      <div class="desc">按规范化后的规范词聚合；原始词在路径详情中保留</div>
+      <div class="table-wrap"><table id="table-top-zero"></table></div>
+    </div>
+  </section>
+
+  <!-- =============================================================== PATHS -->
+  <section class="view" id="view-paths">
+    <div class="card">
+      <h2>查询路径</h2>
+      <div class="desc">
+        同一 session + 标签页内、间隔不超过空闲阈值的搜索串成一条路径；
+        跨标签页事件不进入路径，但会话级转化仍计入归因。
+      </div>
+      <div class="form-row">
+        <label><input type="checkbox" id="p-zero"> 仅含零结果的路径</label>
+        <label><input type="checkbox" id="p-incomplete"> 仅未完整观察的会话</label>
+        <button class="btn small" id="p-refresh" type="button">刷新</button>
+      </div>
+      <div id="path-list"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================= COMPARE -->
+  <section class="view" id="view-compare">
+    <div class="card">
+      <h2>按词类对比</h2>
+      <div class="desc">词类仅由页面维护的显式关键词规则判定，未命中归为 other</div>
+      <div class="table-wrap"><table id="table-wc"></table></div>
+      <div id="chart-wc" style="margin-top:16px"></div>
+    </div>
+    <div class="card">
+      <h2>按实验版本（A/B）对比</h2>
+      <div class="desc">同一套固定观察窗口与归因规则，版本差异即实验处理效应</div>
+      <div class="table-wrap"><table id="table-ab"></table></div>
+      <div id="chart-ab" style="margin-top:16px"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================= MAPPING -->
+  <section class="view" id="view-mapping">
+    <div class="card">
+      <h2>映射版本</h2>
+      <div class="desc">同义词合并只按这里维护的明确映射执行；激活新版本后派生数据整体重建，可对照指标前后变化。</div>
+      <div class="form-row">
+        <label>新版本名称 <input id="mv-label" placeholder="如 v2 跑鞋合并"></label>
+        <label>说明 <input id="mv-note" placeholder="变更目的"></label>
+        <button class="btn primary small" id="mv-clone" type="button">从当前版本克隆</button>
+      </div>
+      <div class="table-wrap"><table id="table-mv"></table></div>
+    </div>
+    <div class="card">
+      <h2>映射条目 <span class="pill-version" id="mv-editing"></span></h2>
+      <div class="desc">先在上方选择要编辑的版本（激活版本不可直接改，请克隆后编辑再激活）</div>
+      <div class="form-row">
+        <label>原词（规范化） <input id="me-source" placeholder="如 跑鞋"></label>
+        <label>规范词 <input id="me-target" placeholder="如 运动鞋"></label>
+        <button class="btn primary small" id="me-save" type="button">保存条目</button>
+      </div>
+      <div class="table-wrap"><table id="table-me"></table></div>
+    </div>
+    <div class="card">
+      <h2>词类规则</h2>
+      <div class="desc">子串匹配，规则顺序小者优先；修改后立即重建派生数据</div>
+      <div class="form-row">
+        <label>关键词 <input id="wc-keyword"></label>
+        <label>词类 <input id="wc-class" placeholder="如 shoes"></label>
+        <label>顺序 <input id="wc-order" type="number" value="100" style="min-width:90px"></label>
+        <button class="btn primary small" id="wc-save" type="button">保存规则</button>
+      </div>
+      <div class="table-wrap"><table id="table-wc-rules"></table></div>
+    </div>
+    <div class="card" id="mv-diff-card" style="display:none">
+      <h2>激活前后指标对照</h2>
+      <div class="table-wrap"><table id="table-mv-diff"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================================================= QUALITY -->
+  <section class="view" id="view-quality">
+    <div class="card">
+      <h2>埋点识别与排除规则</h2>
+      <div class="desc">重复埋点、后台自动请求、跨标签页行为的识别规则固定且可审计；被排除事件保留原始载荷。</div>
+      <div class="rule-note">
+        <b>重复埋点</b>：相同 <code>event_id</code>，或相同业务指纹
+        （session + 类型 + 事件时间 + 查询/商品 + 标签页）即判重，含重新发送但换了 id 的信标。<br>
+        <b>后台自动请求</b>：<code>is_background=true</code> 或来源为
+        <code>api_health</code> / <code>suggest_prefetch</code>，一律不进入查询路径。<br>
+        <b>跨标签页</b>：路径按 <code>session_id + tab_id</code> 区分；点击/加购/转化按
+        session 作用域归因，所以在第二个标签页完成的转化仍归功于原搜索。
+      </div>
+      <div class="kpi-grid" id="quality-kpi" style="margin-top:14px"></div>
+      <div class="table-wrap" style="margin-top:14px"><table id="table-excluded"></table></div>
+    </div>
+    <div class="card">
+      <h2>被排除事件样例</h2>
+      <div class="table-wrap"><table id="table-examples"></table></div>
+    </div>
+  </section>
+</main>
+
+<!-- session drill-down modal -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <button class="btn small modal-close" id="modal-close" type="button">关闭 ✕</button>
+    <h3 id="modal-title">会话详情</h3>
+    <div class="mono muted" id="modal-sub"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div class="tip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
